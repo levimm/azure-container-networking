@@ -2,7 +2,6 @@ package kubecontroller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -15,6 +14,7 @@ import (
 	"github.com/Azure/azure-container-networking/cns/restserver"
 	"github.com/Azure/azure-container-networking/cns/singletenantcontroller"
 	nnc "github.com/Azure/azure-container-networking/nodenetworkconfig/api/v1alpha"
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -262,24 +262,33 @@ func (rc *requestController) initCNS(ctx context.Context) error {
 			logger.Errorf("error when getting all pods when initializing cns: %v", err)
 			return err
 		}
-		podInfoByIPProvider = cns.PodInfoByIPProviderFunc(func() map[string]cns.PodInfo {
+		podInfoByIPProvider = cns.PodInfoByIPProviderFunc(func() (map[string]cns.PodInfo, error) {
 			return rc.kubePodsToPodInfoByIP(pods.Items)
 		})
 	}
 
-	// Call cnsclient init cns passing those two things
-	return rc.CNSClient.ReconcileNCState(&ncRequest, podInfoByIPProvider.PodInfoByIP(), nodeNetConfig.Status.Scaler, nodeNetConfig.Spec)
+	podInfoByIP, err := podInfoByIPProvider.PodInfoByIP()
+	if err != nil {
+		return errors.Wrap(err, "err in CNS initialization")
+	}
+
+	// errors.Wrap provides additional context, and return nil if the err input arg is nil
+	// Call cnsclient init cns passing those two things.
+	return errors.Wrap(rc.CNSClient.ReconcileNCState(&ncRequest, podInfoByIP, nodeNetConfig.Status.Scaler, nodeNetConfig.Spec), "err in CNS reconciliation")
 }
 
 // kubePodsToPodInfoByIP maps kubernetes pods to cns.PodInfos by IP
-func (rc *requestController) kubePodsToPodInfoByIP(pods []corev1.Pod) map[string]cns.PodInfo {
+func (rc *requestController) kubePodsToPodInfoByIP(pods []corev1.Pod) (map[string]cns.PodInfo, error) {
 	podInfoByIP := map[string]cns.PodInfo{}
 	for _, pod := range pods {
 		if !pod.Spec.HostNetwork {
+			if _, ok := podInfoByIP[pod.Status.PodIP]; ok {
+				return nil, errors.Wrap(cns.ErrDuplicateIP, pod.Status.PodIP)
+			}
 			podInfoByIP[pod.Status.PodIP] = cns.NewPodInfo("", "", pod.Name, pod.Namespace)
 		}
 	}
-	return podInfoByIP
+	return podInfoByIP, nil
 }
 
 // UpdateCRDSpec updates the CRD spec
