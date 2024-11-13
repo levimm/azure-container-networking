@@ -94,8 +94,12 @@ func (r *multiTenantCrdReconciler) Reconcile(ctx context.Context, request reconc
 	}
 
 	// Parse KubernetesPodInfo as orchestratorContext.
+	podName := nc.Name
+	if strings.HasSuffix(nc.Name, "-2") {
+		podName = strings.TrimSuffix(nc.Name, "-2")
+	}
 	podInfo := cns.KubernetesPodInfo{
-		PodName:      nc.Name,
+		PodName:      podName,
 		PodNamespace: nc.Namespace,
 	}
 	orchestratorContext, err := json.Marshal(podInfo)
