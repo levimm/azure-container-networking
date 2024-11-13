@@ -411,6 +411,7 @@ func (service *HTTPRestService) getAllNetworkContainerResponses(
 
 		// get networkContainerIDs as string, "nc1, nc2"
 		orchestratorContext := podInfo.Name() + podInfo.Namespace()
+		logger.Printf("[Debug-CNS] OrchestratorContext: %s, map: %v", orchestratorContext, service.state.ContainerIDByOrchestratorContext)
 		if service.state.ContainerIDByOrchestratorContext[orchestratorContext] != nil {
 			ncs = strings.Split(string(*service.state.ContainerIDByOrchestratorContext[orchestratorContext]), ",")
 		}
@@ -420,6 +421,24 @@ func (service *HTTPRestService) getAllNetworkContainerResponses(
 			response := cns.Response{
 				ReturnCode: types.UnknownContainerID,
 				Message:    fmt.Sprintf("Failed to find networkContainerID for orchestratorContext %s", orchestratorContext),
+			}
+
+			getNetworkContainerResponse.Response = response
+			getNetworkContainersResponse = append(getNetworkContainersResponse, getNetworkContainerResponse)
+			return getNetworkContainersResponse
+		}
+
+		ncFound := false
+		for _, ncid := range ncs {
+			if ncid == req.NetworkContainerid {
+				ncFound = true
+				break
+			}
+		}
+		if !ncFound {
+			response := cns.Response{
+				ReturnCode: types.UnknownContainerID,
+				Message:    fmt.Sprintf("Failed to find networkContainerID %s for orchestratorContext %s", req.NetworkContainerid, orchestratorContext),
 			}
 
 			getNetworkContainerResponse.Response = response
